@@ -1,8 +1,10 @@
+// routes/auth.js
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
 const Joi = require("joi");
 const User = require("../models/User");
+const logger = require("../logger");
 
 const router = express.Router();
 
@@ -41,6 +43,9 @@ router.post("/register", async (req, res) => {
   try {
     const { error, value } = registerSchema.validate(req.body, { abortEarly: false });
     if (error) {
+      logger.warn("Validation register échouée", {
+        errors: error.details.map((d) => d.message),
+      });
       return res.status(400).json({
         error: "Données invalides.",
         details: error.details.map((d) => d.message),
@@ -51,11 +56,14 @@ router.post("/register", async (req, res) => {
 
     const existing = await User.findOne({ email });
     if (existing) {
+      logger.warn("Tentative d'inscription avec email déjà utilisé", { email });
       return res.status(409).json({ error: "Cet email est déjà utilisé." });
     }
 
     const user = await User.create({ email, password, name });
     const token = generateToken(user);
+
+    logger.info("Nouvel utilisateur inscrit", { userId: user._id, email: user.email });
 
     res.status(201).json({
       message: "Utilisateur créé avec succès.",
@@ -63,7 +71,7 @@ router.post("/register", async (req, res) => {
       token,
     });
   } catch (error) {
-    console.error("Erreur register:", error);
+    logger.error("Erreur register:", { message: error.message, stack: error.stack });
     res.status(500).json({ error: "Erreur serveur." });
   }
 });
@@ -73,6 +81,9 @@ router.post("/login", async (req, res) => {
   try {
     const { error, value } = loginSchema.validate(req.body, { abortEarly: false });
     if (error) {
+      logger.warn("Validation login échouée", {
+        errors: error.details.map((d) => d.message),
+      });
       return res.status(400).json({
         error: "Données invalides.",
         details: error.details.map((d) => d.message),
@@ -82,12 +93,20 @@ router.post("/login", async (req, res) => {
     const { email, password } = value;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(401).json({ error: "Identifiants invalides." });
+    if (!user) {
+      logger.warn("Login avec email inconnu", { email });
+      return res.status(401).json({ error: "Identifiants invalides." });
+    }
 
     const isMatch = await user.comparePassword(password);
-    if (!isMatch) return res.status(401).json({ error: "Identifiants invalides." });
+    if (!isMatch) {
+      logger.warn("Login avec mauvais mot de passe", { email });
+      return res.status(401).json({ error: "Identifiants invalides." });
+    }
 
     const token = generateToken(user);
+
+    logger.info("Utilisateur connecté", { userId: user._id, email: user.email });
 
     res.json({
       message: "Connexion réussie.",
@@ -95,7 +114,7 @@ router.post("/login", async (req, res) => {
       token,
     });
   } catch (error) {
-    console.error("Erreur login:", error);
+    logger.error("Erreur login:", { message: error.message, stack: error.stack });
     res.status(500).json({ error: "Erreur serveur." });
   }
 });

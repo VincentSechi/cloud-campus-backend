@@ -1,6 +1,8 @@
+// routes/tasks.js
 const express = require("express");
 const Joi = require("joi");
 const Task = require("../models/Task");
+const logger = require("../logger");
 
 const router = express.Router();
 
@@ -19,7 +21,7 @@ router.get("/", async (req, res) => {
     const tasks = await Task.find({ user: req.user.id }).sort({ createdAt: -1 });
     res.json(tasks);
   } catch (error) {
-    console.error("Erreur GET /api/tasks:", error);
+    logger.error("Erreur GET /api/tasks:", { message: error.message, stack: error.stack });
     res.status(500).json({ error: "Erreur serveur." });
   }
 });
@@ -29,6 +31,9 @@ router.post("/", async (req, res) => {
   try {
     const { error, value } = createTaskSchema.validate(req.body, { abortEarly: false });
     if (error) {
+      logger.warn("Validation création tâche échouée", {
+        errors: error.details.map((d) => d.message),
+      });
       return res.status(400).json({
         error: "Données invalides.",
         details: error.details.map((d) => d.message),
@@ -40,9 +45,11 @@ router.post("/", async (req, res) => {
       user: req.user.id,
     });
 
+    logger.info("Tâche créée", { taskId: task._id, userId: req.user.id });
+
     res.status(201).json(task);
   } catch (error) {
-    console.error("Erreur POST /api/tasks:", error);
+    logger.error("Erreur POST /api/tasks:", { message: error.message, stack: error.stack });
     res.status(500).json({ error: "Erreur serveur." });
   }
 });
@@ -52,6 +59,9 @@ router.put("/:id", async (req, res) => {
   try {
     const { error, value } = updateTaskSchema.validate(req.body, { abortEarly: false });
     if (error) {
+      logger.warn("Validation mise à jour tâche échouée", {
+        errors: error.details.map((d) => d.message),
+      });
       return res.status(400).json({
         error: "Données invalides.",
         details: error.details.map((d) => d.message),
@@ -59,15 +69,24 @@ router.put("/:id", async (req, res) => {
     }
 
     const task = await Task.findOne({ _id: req.params.id, user: req.user.id });
-    if (!task) return res.status(404).json({ error: "Tâche introuvable." });
+    if (!task) {
+      logger.warn("Tâche non trouvée pour update", {
+        taskId: req.params.id,
+        userId: req.user.id,
+      });
+      return res.status(404).json({ error: "Tâche introuvable." });
+    }
 
     if (value.title) task.title = value.title.trim();
     if (value.completed !== undefined) task.completed = value.completed;
 
     await task.save();
+
+    logger.info("Tâche mise à jour", { taskId: task._id, userId: req.user.id });
+
     res.json(task);
   } catch (error) {
-    console.error("Erreur PUT /api/tasks/:id:", error);
+    logger.error("Erreur PUT /api/tasks/:id:", { message: error.message, stack: error.stack });
     res.status(500).json({ error: "Erreur serveur." });
   }
 });
@@ -81,12 +100,18 @@ router.delete("/:id", async (req, res) => {
     });
 
     if (!task) {
+      logger.warn("Tâche non trouvée pour delete", {
+        taskId: req.params.id,
+        userId: req.user.id,
+      });
       return res.status(404).json({ error: "Tâche introuvable." });
     }
 
+    logger.info("Tâche supprimée", { taskId: task._id, userId: req.user.id });
+
     res.json({ message: "Tâche supprimée." });
   } catch (error) {
-    console.error("Erreur DELETE /api/tasks/:id:", error);
+    logger.error("Erreur DELETE /api/tasks/:id:", { message: error.message, stack: error.stack });
     res.status(500).json({ error: "Erreur serveur." });
   }
 });

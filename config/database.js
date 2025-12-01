@@ -1,21 +1,16 @@
 // config/database.js
-
 const mongoose = require("mongoose");
+const logger = require("../logger");
 
-async function connectToDatabase() {
+const connectToDatabase = async () => {
   try {
-    const uri = `mongodb+srv://${process.env.MONGODB_USERNAME}:${process.env.MONGODB_PASSWORD}@${process.env.MONGODB_CLUSTER}/${process.env.MONGODB_DBNAME}?retryWrites=true&w=majority&appName=toDoApp`;
-
-    console.log("🔄 Connexion à MongoDB Atlas en cours...");
-
-    // ✨ Plus besoin de useNewUrlParser / useUnifiedTopology avec les versions récentes
-    await mongoose.connect(uri);
-
-    console.log("✅ Connecté à MongoDB Atlas !");
+    logger.info("🔄 Connexion à MongoDB Atlas...");
+    await mongoose.connect(process.env.MONGODB_URI);
+    logger.info("✅ Connecté à MongoDB Atlas !");
   } catch (error) {
-    console.error("❌ Erreur de connexion à MongoDB :", error.message);
+    logger.error("❌ Erreur connexion MongoDB :", { message: error.message, stack: error.stack });
     process.exit(1);
   }
-}
+};
 
 module.exports = connectToDatabase;
