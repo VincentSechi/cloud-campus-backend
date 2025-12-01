@@ -1,36 +1,76 @@
 require("dotenv").config();
 const express = require("express");
-const connectToDatabase = require("./config/database");
+const helmet = require("helmet");
+const cors = require("cors");
+const mongoSanitize = require("express-mongo-sanitize");
 
-// ROUTES
+const connectToDatabase = require("./config/database");
 const authRoutes = require("./routes/auth");
 const tasksRoutes = require("./routes/tasks");
-
-// MIDDLEWARE
 const authMiddleware = require("./middleware/auth");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Vérification des variables d'environnement essentielles
+if (!process.env.JWT_SECRET) {
+  console.error("❌ JWT_SECRET manquant dans .env");
+  process.exit(1);
+}
+
+// Sécurité HTTP
+app.use(helmet());
+
+// CORS sécurisé (front local ou prod)
+const allowedOrigin = process.env.CLIENT_URL || "http://localhost:3000";
+
+app.use(
+  cors({
+    origin: allowedOrigin,
+    credentials: false,
+  })
+);
+
+// Nettoyage des inputs pour éviter injections Mongo ($ et .)
+app.use(
+  mongoSanitize({
+    replaceWith: "_",
+  })
+);
+
+// Parsing JSON
 app.use(express.json());
 
 // Connexion MongoDB Atlas
 connectToDatabase();
 
-app.get("/", (req, res) => {
-  res.send("API OK + Auth + Tasks protégées 🚀");
+// Healthcheck
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
 });
 
-// ---- ROUTES PUBLIQUES
+// ----- ROUTES PUBLIQUES -----
 app.use("/api/auth", authRoutes);
 
-// ---- ROUTES PROTÉGÉES
+// ----- ROUTES PROTÉGÉES -----
 app.use("/api/tasks", authMiddleware, tasksRoutes);
 
 app.get("/api/me", authMiddleware, (req, res) => {
   res.json({ message: "Route protégée OK", user: req.user });
 });
 
+// 404
+app.use((req, res) => {
+  res.status(404).json({ error: "Route non trouvée" });
+});
+
+// Gestion d’erreurs globale
+app.use((err, req, res, next) => {
+  console.error("❌ Erreur serveur:", err);
+  res.status(500).json({ error: "Erreur interne du serveur" });
+});
+
 app.listen(PORT, () => {
-  console.log(`🚀 Serveur lancé sur le port ${PORT}`);
+  console.log(`🚀 Serveur backend sécurisé sur le port ${PORT}`);
+  console.log(`🌍 CORS autorise : ${allowedOrigin}`);
 });
